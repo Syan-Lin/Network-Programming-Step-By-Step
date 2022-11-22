@@ -81,7 +81,7 @@ public:
 private:
     void business() {
         // 文件相关操作
-        ifstream inFile("hello_server",ios::in | ios::binary);
+        ifstream inFile("hello_server", ios::in | ios::binary);
         inFile.seekg(0, std::ios_base::end);
         int file_size = inFile.tellg();
         inFile.seekg(0, std::ios_base::beg);
