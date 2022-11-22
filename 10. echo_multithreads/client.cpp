@@ -30,12 +30,12 @@ public:
     }
 
     void init(string ip, int port) {
-        // 1. 设置协议、地址、端口
+        // 设置协议、地址、端口
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = inet_addr(ip.c_str());
         addr.sin_port = htons(port);
 
-        // 2. 创建套接字，参数(协议族，传输方式，协议)
+        // 创建套接字，参数(协议族，传输方式，协议)
         sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if(sock == -1) {
             error_handler(SOCKET_ERROR);
@@ -45,14 +45,14 @@ public:
 
     void run() {
         if(error > 0) return;
-        // 1. 连接服务器
+        // 连接服务器
         if(connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
             error_handler(CONNECT_ERROR);
             return;
         }
         cout << "Connect to server" << endl;
 
-        // 2. 业务
+        // 业务
         business();
     }
 
@@ -71,13 +71,17 @@ private:
 
     void business() {
         thread write_thread(&Client::business_write, this); // 子线程负责发送数据
-        business_read(); // 主线程负责接收数据
         write_thread.detach();
+        business_read(); // 主线程负责接收数据
     }
 
     void business_write() {
         while(true) {
-            if(error == DISCONNECT) return;
+            {
+                unique_lock<mutex> ul(loc);
+                if(error == DISCONNECT) return;
+            }
+
             this_thread::sleep_for(chrono::seconds(1)); // 为了控制台信息不乱
             string mess;
             cout << "sent data: ";
@@ -133,6 +137,7 @@ int main() {
     cout << "name: ";
     string name;
     cin >> name;
+
     Client client(name);
     client.init("127.0.0.1", 6666);
     client.run();
