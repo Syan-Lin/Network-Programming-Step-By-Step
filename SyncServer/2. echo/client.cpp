@@ -89,7 +89,7 @@ private:
         error = code;
         switch(code) {
             case SOCKET_ERROR:  cout << "socket error" << endl;      break;
-            case CONNECT_ERROR: cout << "bind error" << endl;        break;
+            case CONNECT_ERROR: cout << "connect error" << endl;     break;
             case SEND_ERROR:    cout << "send error" << endl;        break;
             case RECV_ERROR:    cout << "recv error" << endl;        break;
             case DISCONNECT:    cout << "server disconnect" << endl; break;
