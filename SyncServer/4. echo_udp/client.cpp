@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "../../include/error_handler.h"
 
 using namespace std;
 
@@ -25,16 +26,16 @@ public:
         // 创建套接字
         sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if(sock == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
     }
 
     void run() {
-        if(error > 0) return;
+        if(ErrorHandler::error != ERROR::NO_ERROR) return;
         // 连接服务器, 这里和 TCP 的连接服务器实际含义不同, 详见 Note
         if(connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-            error_handler(CONNECT_ERROR);
+            ErrorHandler::handle(ERROR::CONNECT_ERROR);
             return;
         }
 
@@ -43,7 +44,7 @@ public:
     }
 
     void shutdown() {
-        if(error == SOCKET_ERROR) return;
+        if(sock == -1) return;
         close(sock);
     }
 
@@ -57,7 +58,7 @@ private:
 
             // 发送数据
             if(sendto(sock, mess.c_str(), mess.size(), 0, (struct sockaddr*)&addr, len) == -1) {
-                error_handler(SEND_ERROR);
+                ErrorHandler::handle(ERROR::SEND_ERROR);
                 continue;
             }
 
@@ -67,7 +68,7 @@ private:
             char raw_data[MAX_BUFF];
             memset(raw_data, 0, sizeof(raw_data));
             if(recvfrom(sock, raw_data, sizeof(raw_data), 0, (struct sockaddr*)&addr, &len) == -1) {
-                error_handler(RECV_ERROR);
+                ErrorHandler::handle(ERROR::RECV_ERROR);
                 continue;
             }
             string data(raw_data);
@@ -79,19 +80,6 @@ private:
     struct sockaddr_in addr;
     socklen_t len;
     int sock;
-
-private:
-    enum ERROR { NUll = 0, SOCKET_ERROR, CONNECT_ERROR, SEND_ERROR, RECV_ERROR };
-    ERROR error = NUll;
-    void error_handler(ERROR code) {
-        error = code;
-        switch(code) {
-            case SOCKET_ERROR:  cout << "socket error" << endl;  break;
-            case CONNECT_ERROR: cout << "connect error" << endl; break;
-            case SEND_ERROR:    cout << "send error" << endl;    break;
-            case RECV_ERROR:    cout << "recv error" << endl;    break;
-        }
-    }
 };
 
 int main() {

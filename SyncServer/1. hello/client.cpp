@@ -4,6 +4,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "../../include/error_handler.h"
 
 using namespace std;
 
@@ -24,16 +25,16 @@ public:
         // 创建套接字，参数(协议族，传输方式，协议)
         sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if(sock == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
     }
 
     void run() {
-        if(error > 0) return;
+        if(ErrorHandler::error != ERROR::NO_ERROR) return;
         // 连接服务器
         if(connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            error_handler(CONNECT_ERROR);
+            ErrorHandler::handle(ERROR::CONNECT_ERROR);
             return;
         }
         cout << "Connect to server" << endl;
@@ -43,7 +44,7 @@ public:
     }
 
     void shutdown() {
-        if(error == SOCKET_ERROR) return;
+        if(sock == -1) return;
         close(sock);
     }
 
@@ -53,7 +54,7 @@ private:
         char raw_data[MAX_BUFF];
         memset(raw_data, 0, sizeof(raw_data));
         if(recv(sock, raw_data, sizeof(raw_data), 0) == -1) {
-            error_handler(RECV_ERROR);
+            ErrorHandler::handle(ERROR::RECV_ERROR);
         }
         string data(raw_data);
 
@@ -63,19 +64,7 @@ private:
 private:
     struct sockaddr_in addr;
     int sock;
-
-private:
-    enum ERROR { NUll = 0, SOCKET_ERROR, CONNECT_ERROR, SEND_ERROR, RECV_ERROR };
-    ERROR error = NUll;
-    void error_handler(ERROR code) {
-        error = code;
-        switch(code) {
-            case SOCKET_ERROR:  cout << "socket error" << endl;  break;
-            case CONNECT_ERROR: cout << "connect error" << endl; break;
-            case SEND_ERROR:    cout << "send error" << endl;    break;
-            case RECV_ERROR:    cout << "recv error" << endl;    break;
-        }
-    }
+    ErrorHandler eh;
 };
 
 int main() {

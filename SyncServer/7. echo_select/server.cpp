@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <unistd.h>
+#include "../../include/error_handler.h"
 
 using namespace std;
 
@@ -30,13 +31,13 @@ public:
         // 创建套接字
         socket_serv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if(socket_serv == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
 
         // 绑定地址
         if(bind(socket_serv, (struct sockaddr*)&addr_serv, sizeof(addr_serv)) == -1) {
-            error_handler(BIND_ERROR);
+            ErrorHandler::handle(ERROR::BIND_ERROR);
             return;
         }
 
@@ -49,10 +50,10 @@ public:
     }
 
     void run() {
-        if(error > 0) return;
+        if(ErrorHandler::error != ERROR::NO_ERROR) return;
         // 开始监听
         if(listen(socket_serv, 8) == -1) {
-            error_handler(LISTEN_ERROR);
+            ErrorHandler::handle(ERROR::LISTEN_ERROR);
             return;
         }
         cout << "Server is running!" << endl;
@@ -64,7 +65,7 @@ public:
             // fd_max 表示的是最大的下标, 而 select 第一个参数表示数量, 所以需要 + 1
             int fd_num = select(fd_max + 1, &cpy_reads, nullptr, nullptr, &timeout);
             if(fd_num == -1) { // select 出错
-                error_handler(SELECT_ERROR);
+                ErrorHandler::handle(ERROR::SELECT_ERROR);
                 break;
             } else if(fd_num == 0) { // 当前没有套接字产生事件
                 continue;
@@ -83,7 +84,7 @@ public:
     }
 
     void shutdown() {
-        if(error == SOCKET_ERROR) return;
+        if(socket_serv == -1) return;
         close(socket_serv);
     }
 private:
@@ -93,7 +94,7 @@ private:
         memset(raw_data, 0, sizeof(raw_data));
         int rtn_val = recv(sock, raw_data, sizeof(raw_data), 0);
         if(rtn_val == -1) {
-            error_handler(RECV_ERROR);
+            ErrorHandler::handle(ERROR::RECV_ERROR);
             return;
         }
 
@@ -107,7 +108,7 @@ private:
         } else {
             // 发送数据
             if(send(sock, data.c_str(), data.size(), 0) == -1) {
-                error_handler(SEND_ERROR);
+                ErrorHandler::handle(ERROR::SEND_ERROR);
             }
         }
     }
@@ -137,21 +138,6 @@ private:
     struct timeval timeout; // select 阻塞等待时间
     fd_set reads;           // 监听接收数据事件, 表示有数据需要读
     int fd_max;
-
-private:
-    enum ERROR { NUll = 0, SOCKET_ERROR, BIND_ERROR, LISTEN_ERROR, SEND_ERROR, RECV_ERROR, SELECT_ERROR };
-    ERROR error = NUll;
-    void error_handler(ERROR code) {
-        error = code;
-        switch(code) {
-            case SOCKET_ERROR: cout << "socket error" << endl; break;
-            case BIND_ERROR:   cout << "bind error" << endl;   break;
-            case LISTEN_ERROR: cout << "listen error" << endl; break;
-            case SEND_ERROR:   cout << "send error" << endl;   break;
-            case RECV_ERROR:   cout << "recv error" << endl;   break;
-            case SELECT_ERROR: cout << "select error" << endl; break;
-        }
-    }
 };
 
 int main() {

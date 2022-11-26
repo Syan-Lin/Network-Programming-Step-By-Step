@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <thread>
 #include <mutex>
+#include "../../include/error_handler.h"
 
 using namespace std;
 
@@ -35,13 +36,13 @@ public:
         // 创建套接字
         socket_serv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if(socket_serv == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
 
         // 绑定地址
         if(bind(socket_serv, (struct sockaddr*)&addr_serv, sizeof(addr_serv)) == -1) {
-            error_handler(BIND_ERROR);
+            ErrorHandler::handle(ERROR::BIND_ERROR);
             return;
         }
 
@@ -50,7 +51,7 @@ public:
 
         // epoll 相关
         epfd = epoll_create(EPOLL_SIZE); // Linux 内核版本大于 2.6.8 该参数没有意义
-        ep_events = (epoll_event*)malloc(sizeof(struct epoll_event) * EPOLL_SIZE);
+        ep_events = new struct epoll_event[EPOLL_SIZE];
 
         struct epoll_event event;
         event.events = EPOLLIN;
@@ -59,17 +60,17 @@ public:
     }
 
     void run() {
-        if(error > 0) return;
+        if(ErrorHandler::error != ERROR::NO_ERROR) return;
         // 开始监听
         if(listen(socket_serv, 8) == -1) {
-            error_handler(LISTEN_ERROR);
+            ErrorHandler::handle(ERROR::LISTEN_ERROR);
             return;
         }
         cout << "Server is running!" << endl;
         while(true) {
             int event_cnt = epoll_wait(epfd, ep_events, EPOLL_SIZE, -1);
             if(event_cnt == -1) {
-                error_handler(EPOLL_ERROR);
+                ErrorHandler::handle(ERROR::EPOLL_ERROR);
                 return;
             } else if(event_cnt == 0) {
                 continue;
@@ -88,9 +89,10 @@ public:
     }
 
     void shutdown() {
-        if(error == SOCKET_ERROR) return;
-        close(socket_serv);
-        close(epfd);
+        if(socket_serv != -1)
+            close(socket_serv);
+        if(epfd != -1)
+            close(epfd);
     }
 
     void set_epoll_et(bool val) {
@@ -114,7 +116,7 @@ private:
                         // cout << "[socket " << sock << "](" << times << " times): ";
                         break;
                     } else {
-                        error_handler(RECV_ERROR);
+                        ErrorHandler::handle(ERROR::RECV_ERROR);
                         return;
                     }
                 }
@@ -125,7 +127,7 @@ private:
             rtn_val = recv(sock, temp, sizeof(temp), 0);
             times++;
             if(rtn_val == -1) {
-                error_handler(RECV_ERROR);
+                ErrorHandler::handle(ERROR::RECV_ERROR);
                 return;
             }
             memcpy(raw_data, temp, rtn_val);
@@ -134,7 +136,7 @@ private:
         string data(raw_data);
         cout << data << endl;
 
-        unique_lock ul(loc);
+        unique_lock<mutex> ul(loc);
 
         if(data == "Quit" || rtn_val == 0) { // 断开连接或主动退出
             // 注销套接字
@@ -151,7 +153,7 @@ private:
             for(int i = 0; i < socks.size(); i++) {
                 if(socks[i] != sock) {
                     if(send(socks[i], data.c_str(), data.size(), 0) == -1) {
-                        error_handler(SEND_ERROR);
+                        ErrorHandler::handle(ERROR::SEND_ERROR);
                     }
                 }
             }
@@ -163,7 +165,7 @@ private:
         // 获取来自客户端的连接，如果没有则会阻塞
         int socket_clnt = accept(socket_serv, nullptr, nullptr);
         if(socket_clnt == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
 
@@ -177,7 +179,7 @@ private:
 
         event.data.fd = socket_clnt;
 
-        unique_lock ul(loc);
+        unique_lock<mutex> ul(loc);
         socks.push_back(socket_clnt);
         epoll_ctl(epfd, EPOLL_CTL_ADD, socket_clnt, &event); // 添加客户端套接字监听
 
@@ -197,20 +199,6 @@ private:
     // 多线程相关
     mutex loc;
 
-private:
-    enum ERROR { NUll = 0, SOCKET_ERROR, BIND_ERROR, LISTEN_ERROR, SEND_ERROR, RECV_ERROR, EPOLL_ERROR };
-    ERROR error = NUll;
-    void error_handler(ERROR code) {
-        error = code;
-        switch(code) {
-            case SOCKET_ERROR: cout << "socket error" << endl; break;
-            case BIND_ERROR:   cout << "bind error" << endl;   break;
-            case LISTEN_ERROR: cout << "listen error" << endl; break;
-            case SEND_ERROR:   cout << "send error" << endl;   break;
-            case RECV_ERROR:   cout << "recv error" << endl;   break;
-            case EPOLL_ERROR:  cout << "epoll error" << endl;  break;
-        }
-    }
     void set_no_block(int fd) {
         int flag = fcntl(fd, F_GETFL, 0);     // 得到套接字原来属性
         fcntl(fd, F_SETFL, flag | O_NONBLOCK);// 在原有属性基础上设置添加非阻塞模式

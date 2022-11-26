@@ -11,7 +11,7 @@
 #include <thread>
 #include <mutex>
 #include <fstream>
-#include "../../dbg.h"
+#include "../../include/error_handler.h"
 
 using namespace std;
 
@@ -37,13 +37,13 @@ public:
         // 创建套接字
         socket_serv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if(socket_serv == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
 
         // 绑定地址
         if(bind(socket_serv, (struct sockaddr*)&addr_serv, sizeof(addr_serv)) == -1) {
-            error_handler(BIND_ERROR);
+            ErrorHandler::handle(ERROR::BIND_ERROR);
             return;
         }
 
@@ -61,17 +61,17 @@ public:
     }
 
     void run() {
-        if(error > 0) return;
+        if(ErrorHandler::error != ERROR::NO_ERROR) return;
         // 开始监听
         if(listen(socket_serv, 8) == -1) {
-            error_handler(LISTEN_ERROR);
+            ErrorHandler::handle(ERROR::LISTEN_ERROR);
             return;
         }
         cout << "HttpServer is running!" << endl;
         while(true) {
             int event_cnt = epoll_wait(epfd, ep_events, EPOLL_SIZE, -1);
             if(event_cnt == -1) {
-                error_handler(EPOLL_ERROR);
+                ErrorHandler::handle(ERROR::EPOLL_ERROR);
                 return;
             } else if(event_cnt == 0) {
                 continue;
@@ -90,9 +90,10 @@ public:
     }
 
     void shutdown() {
-        if(error == SOCKET_ERROR) return;
-        close(socket_serv);
-        close(epfd);
+        if(socket_serv != -1)
+            close(socket_serv);
+        if(epfd != -1)
+            close(epfd);
     }
 
     void set_epoll_et(bool val) {
@@ -118,7 +119,7 @@ private:
                         // cout << "[socket " << sock << "](" << times << " times): ";
                         break;
                     } else {
-                        error_handler(RECV_ERROR);
+                        ErrorHandler::handle(ERROR::RECV_ERROR);
                         return;
                     }
                 }
@@ -129,7 +130,7 @@ private:
             rtn_val = recv(sock, temp, sizeof(temp), 0);
             times++;
             if(rtn_val == -1) {
-                error_handler(RECV_ERROR);
+                ErrorHandler::handle(ERROR::RECV_ERROR);
                 return;
             }
             memcpy(raw_data, temp, rtn_val);
@@ -144,10 +145,8 @@ private:
             close(sock);
             return;
         }
-        dbg(data);
 
         string method = data.substr(0, 3);
-        dbg(method);
         if(method != "GET") {
             send_error(400, sock);
             unique_lock<mutex> ul(loc);
@@ -164,7 +163,6 @@ private:
                 break;
             }
         }
-        dbg(filename);
         ifstream file(filename, ios::in | ios::binary);
         if(!file) {
             send_error(404, sock);
@@ -190,21 +188,18 @@ private:
         string body(file_raw);
         message += body;
 
-        dbg(message);
-
         // 发送数据
         if(send(sock, message.c_str(), message.size(), 0) == -1) {
-            error_handler(SEND_ERROR);
+            ErrorHandler::handle(ERROR::SEND_ERROR);
         }
-        
+
         unique_lock<mutex> ul(loc);
         epoll_ctl(epfd, EPOLL_CTL_DEL, sock, NULL);
         close(sock);
-        delete file_raw;
+        delete[] file_raw;
     }
 
     void send_error(int code, int sock) {
-        dbg(code);
         string message;
         if(code == 404) {
             message = "HTTP/1.0 404 Not Found\r\n";
@@ -218,7 +213,7 @@ private:
                     <body>Error!</body></html>";
         // 发送数据
         if(send(sock, message.c_str(), message.size(), 0) == -1) {
-            error_handler(SEND_ERROR);
+            ErrorHandler::handle(ERROR::SEND_ERROR);
         }
     }
 
@@ -227,7 +222,7 @@ private:
         // 获取来自客户端的连接，如果没有则会阻塞
         int socket_clnt = accept(socket_serv, nullptr, nullptr);
         if(socket_clnt == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
 
@@ -241,7 +236,7 @@ private:
 
         event.data.fd = socket_clnt;
 
-        unique_lock ul(loc);
+        unique_lock<mutex> ul(loc);
         epoll_ctl(epfd, EPOLL_CTL_ADD, socket_clnt, &event); // 添加客户端套接字监听
 
         cout << "[socket " << socket_clnt << "] connect" << endl;
@@ -259,20 +254,6 @@ private:
     // 多线程相关
     mutex loc;
 
-private:
-    enum ERROR { NUll = 0, SOCKET_ERROR, BIND_ERROR, LISTEN_ERROR, SEND_ERROR, RECV_ERROR, EPOLL_ERROR };
-    ERROR error = NUll;
-    void error_handler(ERROR code) {
-        error = code;
-        switch(code) {
-            case SOCKET_ERROR: cout << "socket error" << endl; break;
-            case BIND_ERROR:   cout << "bind error" << endl;   break;
-            case LISTEN_ERROR: cout << "listen error" << endl; break;
-            case SEND_ERROR:   cout << "send error" << endl;   break;
-            case RECV_ERROR:   cout << "recv error" << endl;   break;
-            case EPOLL_ERROR:  cout << "epoll error" << endl;  break;
-        }
-    }
     void set_no_block(int fd) {
         int flag = fcntl(fd, F_GETFL, 0);     // 得到套接字原来属性
         fcntl(fd, F_SETFL, flag | O_NONBLOCK);// 在原有属性基础上设置添加非阻塞模式

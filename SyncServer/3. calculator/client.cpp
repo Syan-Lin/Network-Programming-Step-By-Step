@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
+#include "../../include/error_handler.h"
 
 using namespace std;
 
@@ -23,16 +24,16 @@ public:
         // 创建套接字
         sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if(sock == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
     }
 
     void run() {
-        if(error > 0) return;
+        if(ErrorHandler::error != ERROR::NO_ERROR) return;
         // 连接服务器
         if(connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            error_handler(CONNECT_ERROR);
+            ErrorHandler::handle(ERROR::CONNECT_ERROR);
             return;
         }
         cout << "Connect to server" << endl;
@@ -42,7 +43,7 @@ public:
     }
 
     void shutdown() {
-        if(error == SOCKET_ERROR) return;
+        if(sock == -1) return;
         close(sock);
     }
 
@@ -76,19 +77,19 @@ private:
 
             // 发送数据
             if(send(sock, bytes, size, 0) == -1) {
-                error_handler(SEND_ERROR);
-                delete bytes;
+                ErrorHandler::handle(ERROR::SEND_ERROR);
+                delete[] bytes;
                 continue;
             }
-            delete bytes;
+            delete[] bytes;
 
             // 接收数据
             int result;
             int rtn_val = recv(sock, &result, sizeof(result), 0);
             if(rtn_val == -1) {
-                error_handler(RECV_ERROR);
+                ErrorHandler::handle(ERROR::RECV_ERROR);
             } else if(rtn_val == 0) { // 服务器断开连接
-                error_handler(DISCONNECT);
+                ErrorHandler::handle(ERROR::DISCONNECT);
                 break;
             }
             cout << "Result: " << result << endl;
@@ -98,20 +99,6 @@ private:
 private:
     struct sockaddr_in addr;
     int sock;
-
-private:
-    enum ERROR { NUll = 0, SOCKET_ERROR, CONNECT_ERROR, SEND_ERROR, RECV_ERROR, DISCONNECT };
-    ERROR error = NUll;
-    void error_handler(ERROR code) {
-        error = code;
-        switch(code) {
-            case SOCKET_ERROR:  cout << "socket error" << endl;      break;
-            case CONNECT_ERROR: cout << "connect error" << endl;     break;
-            case SEND_ERROR:    cout << "send error" << endl;        break;
-            case RECV_ERROR:    cout << "recv error" << endl;        break;
-            case DISCONNECT:    cout << "server disconnect" << endl; break;
-        }
-    }
 };
 
 int main() {

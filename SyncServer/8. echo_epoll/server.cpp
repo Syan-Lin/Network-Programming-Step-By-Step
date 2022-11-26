@@ -7,6 +7,7 @@
 #include <error.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "../../include/error_handler.h"
 
 using namespace std;
 
@@ -19,6 +20,9 @@ public:
         memset(&addr_serv, 0, sizeof(addr_serv));
         memset(&addr_clnt, 0, sizeof(addr_clnt));
         len = sizeof(addr_clnt);
+    }
+    ~Server() {
+        delete[] ep_events;
     }
     Server(const Server&)            = delete;
     Server(Server&&)                 = delete;
@@ -34,13 +38,13 @@ public:
         // 创建套接字
         socket_serv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if(socket_serv == -1) {
-            error_handler(SOCKET_ERROR);
+            ErrorHandler::handle(ERROR::SOCKET_ERROR);
             return;
         }
 
         // 绑定地址
         if(bind(socket_serv, (struct sockaddr*)&addr_serv, sizeof(addr_serv)) == -1) {
-            error_handler(BIND_ERROR);
+            ErrorHandler::handle(ERROR::BIND_ERROR);
             return;
         }
 
@@ -49,7 +53,7 @@ public:
 
         // epoll 相关
         epfd = epoll_create(EPOLL_SIZE); // Linux 内核版本大于 2.6.8 该参数没有意义
-        ep_events = (epoll_event*)malloc(sizeof(struct epoll_event) * EPOLL_SIZE);
+        ep_events = new struct epoll_event[EPOLL_SIZE];
 
         struct epoll_event event;
         event.events = EPOLLIN;
@@ -58,17 +62,17 @@ public:
     }
 
     void run() {
-        if(error > 0) return;
+        if(ErrorHandler::error != ERROR::NO_ERROR) return;
         // 开始监听
         if(listen(socket_serv, 8) == -1) {
-            error_handler(LISTEN_ERROR);
+            ErrorHandler::handle(ERROR::LISTEN_ERROR);
             return;
         }
         cout << "Server is running!" << endl;
         while(true) {
             int event_cnt = epoll_wait(epfd, ep_events, EPOLL_SIZE, -1);
             if(event_cnt == -1) {
-                error_handler(EPOLL_ERROR);
+                ErrorHandler::handle(ERROR::EPOLL_ERROR);
                 return;
             } else if(event_cnt == 0) {
                 continue;
@@ -85,9 +89,10 @@ public:
     }
 
     void shutdown() {
-        if(error == SOCKET_ERROR) return;
-        close(socket_serv);
-        close(epfd);
+        if(socket_serv != -1)
+            close(socket_serv);
+        if(epfd != -1)
+            close(epfd);
     }
 
     // 设置边沿触发
@@ -112,7 +117,7 @@ private:
                         cout << "[socket " << sock << "] recv " << times << " times" << endl;
                         break;
                     } else {
-                        error_handler(RECV_ERROR);
+                        ErrorHandler::handle(ERROR::RECV_ERROR);
                         return;
                     }
                 }
@@ -122,7 +127,7 @@ private:
         } else { // 水平触发 + 阻塞 IO, 不用循环
             rtn_val = recv(sock, raw_data, sizeof(raw_data), 0);
             if(rtn_val == -1) {
-                error_handler(RECV_ERROR);
+                ErrorHandler::handle(ERROR::RECV_ERROR);
                 return;
             }
         }
@@ -137,7 +142,7 @@ private:
         } else {
             // 发送数据
             if(send(sock, data.c_str(), data.size(), 0) == -1) {
-                error_handler(SEND_ERROR);
+                ErrorHandler::handle(ERROR::SEND_ERROR);
             }
         }
     }
@@ -173,20 +178,6 @@ private:
     bool edge_trigger = false;     // epoll 默认为水平触发
     int epfd;
 
-private:
-    enum ERROR { NUll = 0, SOCKET_ERROR, BIND_ERROR, LISTEN_ERROR, SEND_ERROR, RECV_ERROR, EPOLL_ERROR };
-    ERROR error = NUll;
-    void error_handler(ERROR code) {
-        error = code;
-        switch(code) {
-            case SOCKET_ERROR: cout << "socket error" << endl; break;
-            case BIND_ERROR:   cout << "bind error" << endl;   break;
-            case LISTEN_ERROR: cout << "listen error" << endl; break;
-            case SEND_ERROR:   cout << "send error" << endl;   break;
-            case RECV_ERROR:   cout << "recv error" << endl;   break;
-            case EPOLL_ERROR:  cout << "epoll error" << endl;  break;
-        }
-    }
     void set_no_block(int fd) {
         int flag = fcntl(fd, F_GETFL, 0);      // 得到套接字原来属性
         fcntl(fd, F_SETFL, flag | O_NONBLOCK); // 在原有属性基础上设置添加非阻塞模式
