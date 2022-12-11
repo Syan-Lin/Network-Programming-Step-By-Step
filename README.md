@@ -1,2 +1,2 @@
 # Network-Programming-Step-By-Step
-A series of network programming in linux.
+Linux 网络编程入门
